@@ -23,7 +23,7 @@ const processes: ProcessType[] = [
 const processDescriptions: Record<ProcessType, string> = {
   'LLM simple': 'Réponse directe du modèle',
   'RAG': 'Récupération avec documents',
-  'RAG optimisé': 'RAG avec reranking',
+  'RAG optimisé': 'RG avec Reranking coss-encoder',
   'RAG fine-tuné (RAFT)': 'RAG avec fine-tuning',
   'RAG + Agent IA': 'RAG avec agent autonome',
   'RAG + Multi-agents': 'Orchestration multi-agents',
@@ -109,6 +109,21 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMe
                 }`}
               >
                 <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+              {message.role === 'assistant' && message.sources && message.sources.length > 0 && (
+                  <div className="mt-3 pt-2 border-t border-green-200">
+                    <p className="text-xs font-semibold text-green-700 flex items-center gap-1">
+                      📄 Sources utilisées :
+                    </p>
+                    <ul className="text-xs text-gray-600 mt-1 space-y-1">
+                      {message.sources.map((src, idx) => (
+                        <li key={idx} className="flex items-start gap-1">
+                          <span>•</span>
+                          <span className="break-all">{src}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           ))

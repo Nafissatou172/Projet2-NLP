@@ -3,6 +3,9 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 
+# Import des routes
+from routes import api_bp
+
 # Charger les variables d'environnement
 load_dotenv()
 
@@ -13,19 +16,16 @@ CORS(app)
 app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'True') == 'True'
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
 
+# Enregistrement du Blueprint principal
+app.register_blueprint(api_bp)
 
+# Route root (optionnelle si déjà dans le blueprint, mais utile pour redirection)
 @app.route('/')
-def index():
+def root():
     return jsonify({
-        'message': 'Bienvenue sur l\'API NLP',
-        'status': 'ok'
+        'message': 'API FinChat-SN opérationnelle',
+        'endpoints': ['/api', '/api/health', '/api/benchmark']
     })
-
-
-@app.route('/api/health')
-def health():
-    return jsonify({'status': 'healthy'})
-
 
 if __name__ == '__main__':
     app.run(

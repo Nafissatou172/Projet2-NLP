@@ -1,20 +1,52 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { BenchmarkResults } from '../types';
-import { benchmarkData } from '../data/mockData';
+import { BenchmarkResults, ChartData } from '../types/types';
 import { Zap } from 'lucide-react';
 
-export const BenchmarkSection: React.FC = () => {
-  const [results, setResults] = useState<BenchmarkResults | null>(null);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
+interface BenchmarkSectionProps {
+  results: BenchmarkResults | null;
+  setResults: (results: BenchmarkResults | null) => void;
+  isRunning: boolean;
+  setIsRunning: (running: boolean) => void;
+}
 
-  const runBenchmark = (): void => {
-    setIsRunning(true);
-    setTimeout(() => {
-      setResults(benchmarkData);
-      setIsRunning(false);
-    }, 2000);
+export const BenchmarkSection: React.FC<BenchmarkSectionProps> = ({
+  results,
+  setResults,
+  isRunning,
+  setIsRunning,
+}) => {
+  const transformToChartData = (data: BenchmarkResults): ChartData[] => {
+    return data.results.map(model => ({
+      processus: model.display_name,
+      précision: Math.round(model.aggregated.quality * 100),
+      pertinence: Math.round(model.aggregated.quality * 100),
+      fidélité: Math.round(model.aggregated.faithfulness * 100),
+      tempsDeRéponse: parseFloat(model.aggregated.latency_avg_seconds.toFixed(2)),
+      scoreGlobal: Math.round(model.aggregated.global_score * 100),
+    }));
   };
+
+  const runBenchmark = async () => {
+    setIsRunning(true);
+    try {
+      const response = await fetch('/api/benchmark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ models: ['mistral', 'llama', 'qwen'], sample_size: 10 }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data: BenchmarkResults = await response.json();
+      setResults(data);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Erreur : ${err.message}`);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const chartData = results ? transformToChartData(results) : [];
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 border border-green-100">
@@ -34,27 +66,16 @@ export const BenchmarkSection: React.FC = () => {
 
       {results ? (
         <div className="space-y-8">
+          {/* Graphique qualité */}
           <div>
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Métriques de qualité</h3>
             <div className="h-80 bg-gradient-to-b from-gray-50 to-white rounded-lg p-4">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={results.metrics}>
+                <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis
-                    dataKey="processus"
-                    angle={-15}
-                    textAnchor="end"
-                    height={80}
-                    fontSize={12}
-                  />
-                  <YAxis stroke="#9ca3af" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#fff',
-                      border: '2px solid #10b981',
-                      borderRadius: '8px',
-                    }}
-                  />
+                  <XAxis dataKey="processus" angle={-15} textAnchor="end" height={80} fontSize={12} />
+                  <YAxis domain={[0, 100]} stroke="#9ca3af" />
+                  <Tooltip contentStyle={{ backgroundColor: '#fff', border: '2px solid #10b981', borderRadius: '8px' }} />
                   <Legend />
                   <Bar dataKey="précision" fill="#10b981" name="Précision (%)" radius={[8, 8, 0, 0]} />
                   <Bar dataKey="pertinence" fill="#059669" name="Pertinence (%)" radius={[8, 8, 0, 0]} />
@@ -63,33 +84,40 @@ export const BenchmarkSection: React.FC = () => {
               </ResponsiveContainer>
             </div>
           </div>
-
+          {/* Graphique temps de réponse */}
           <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Temps de réponse</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Temps de réponse (secondes)</h3>
             <div className="h-64 bg-gradient-to-b from-gray-50 to-white rounded-lg p-4">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={results.metrics}>
+                <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis
-                    dataKey="processus"
-                    angle={-15}
-                    textAnchor="end"
-                    height={80}
-                    fontSize={12}
-                  />
-                  <YAxis stroke="#9ca3af" label={{ value: 'Secondes', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#fff',
-                      border: '2px solid #ef4444',
-                      borderRadius: '8px',
-                    }}
-                  />
+                  <XAxis dataKey="processus" angle={-15} textAnchor="end" height={80} fontSize={12} />
+                  <YAxis stroke="#9ca3af" />
+                  <Tooltip contentStyle={{ backgroundColor: '#fff', border: '2px solid #ef4444', borderRadius: '8px' }} />
                   <Legend />
                   <Bar dataKey="tempsDeRéponse" fill="#ef4444" name="Temps de réponse (s)" radius={[8, 8, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
+          </div>
+          {/* Score global */}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Score global (0-100)</h3>
+            <div className="h-64 bg-gradient-to-b from-gray-50 to-white rounded-lg p-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="processus" angle={-15} textAnchor="end" height={80} fontSize={12} />
+                  <YAxis domain={[0, 100]} stroke="#9ca3af" />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="scoreGlobal" fill="#3b82f6" name="Score Global" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="text-sm text-gray-500 text-center mt-4">
+            Benchmark exécuté en {results.duration_seconds} secondes sur {results.sample_size} questions.
           </div>
         </div>
       ) : (

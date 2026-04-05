@@ -1,0 +1,7 @@
+comment vous avez générer les questions ? , 
+précision du rag?  
+Comment vous avez optimiser le RAG? etc .... 
+à la fin on doit répondre à ce type de question .
+évaluer avec RAGAS
+Notes : données du rag ( ceux du chunking) 
+ / Données d'évaluations ( fichiers csv avec lequel le modèle est évalué ) !
