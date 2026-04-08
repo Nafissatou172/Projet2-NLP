@@ -656,10 +656,63 @@ def rag_index_info():
 
 
 # ─────────────────────────────────────────────
+#  Endpoint du RAG Agent
+# ─────────────────────────────────────────────
+from utils.agent import run_react_agent
+
+@api_bp.route("/rag-agent", methods=["POST"])
+def rag_agent_endpoint():
+    body = request.get_json(silent=True)
+    if not body or "question" not in body:
+        return jsonify({"error": "Question manquante"}), 400
+
+    question = body["question"].strip()
+    if not question:
+        return jsonify({"error": "Question vide"}), 400
+
+    collection = get_rag_collection()
+    
+    try:
+        result = run_react_agent(collection, question)
+        if "error" in result:
+            return jsonify({"error": result["error"]}), 500
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Erreur interne Agent : {str(e)}"}), 500
+
+# ─────────────────────────────────────────────
+#  Endpoint du RAG Multi-Agent
+# ─────────────────────────────────────────────
+from utils.multi_agent import run_multi_agent_rag
+
+@api_bp.route("/rag-multi-agent", methods=["POST"])
+def rag_multi_agent_endpoint():
+    body = request.get_json(silent=True)
+    if not body or "question" not in body:
+        return jsonify({"error": "Question manquante"}), 400
+
+    question = body["question"].strip()
+    if not question:
+        return jsonify({"error": "Question vide"}), 400
+
+    collection = get_rag_collection()
+    
+    try:
+        result = run_multi_agent_rag(collection, question)
+        if "error" in result:
+            return jsonify({"error": result["error"]}), 500
+        
+        # Nettoyage si nécessaire (bien que déjà propre selon nos paramètres, c'est plus sûr)
+        result["response"] = clean_response(result["response"])
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Erreur interne Multi-Agent : {str(e)}"}), 500
+
+# ─────────────────────────────────────────────
 #  Evaluation des modèles LLM simple ; RAG; RAG optimisé ; RAFT; RAG Agent ; RAG multi-agent
 # ─────────────────────────────────────────────
 
-from utils.evaluations import retrieval_precision, retrieval_recall_at_k, cosine_similarity_between, get_embedder
+from utils.evaluations import retrieval_precision, retrieval_recall_at_k, cosine_similarity_between, get_embedder, run_evaluations
 from sentence_transformers import SentenceTransformer, util
 
 # Les processus sont évalués sur 30 questions du dataset à défaut de préciser le sample_size 
@@ -675,96 +728,7 @@ def evaluations():
     sample_size = request.args.get("sample_size", default=30, type=int)
     # Charger un échantillon du dataset (ou tout)
     questions = _load_dataset(sample_size=sample_size)
-
-    processes = [
-        {"name": "LLM simple", "endpoint": "/llm-simple", "has_retrieval": False},
-        {"name": "RAG", "endpoint": "/rag-simple", "has_retrieval": True},
-        {"name": "RAG optimisé", "endpoint": "/rag-optimized", "has_retrieval": True},
-    ]
-
-    base_url = "http://localhost:5001"
-    results = {}
-
-    for proc in processes:
-        eval_details = []
-        for item in questions:
-            q = item["question"]
-            ref_answer = item["reponse"]
-
-            try:
-                start = time.perf_counter()
-                resp = requests.post(f"{base_url}/api{proc['endpoint']}", json={"question": q}, timeout=90)
-                latency = time.perf_counter() - start
-                if resp.status_code != 200:
-                    raise Exception(resp.json().get("error", "Erreur API"))
-                data = resp.json()
-
-                generated = data.get("response", "")
-                # Qualité : similarité entre réponse générée et référence
-                quality = cosine_similarity_between(generated, ref_answer)
-
-                # Fidélité : similarité entre génération et contexte (si retrieval)
-                faithfulness = 0.0
-                precision = recall = 0.0
-                if proc["has_retrieval"]:
-                    # Récupérer les chunks (selon le format renvoyé)
-                    if proc["name"] == "RAG":
-                        chunks = data.get("context_chunks", [])
-                        # context_chunks est une liste de dict avec "text"
-                        retrieved_texts = [c.get("text", "") for c in chunks if c.get("text")]
-                    else:  # RAG optimisé
-                        retrieved_texts = data.get("retrieved_chunks", [])
-                        if retrieved_texts and isinstance(retrieved_texts[0], dict):
-                            retrieved_texts = [c.get("text", "") for c in retrieved_texts]
-
-                    if retrieved_texts:
-                        # Fidélité : similarité max entre génération et chaque chunk (ou moyenne)
-                        gen_emb = get_embedder().encode(generated)
-                        chunk_embs = get_embedder().encode(retrieved_texts)
-                        sims = util.cos_sim(gen_emb, chunk_embs)[0].tolist()
-                        faithfulness = max(sims)  # la meilleure correspondance 
-
-                        # Métriques de retrieval
-                        precision = retrieval_precision(retrieved_texts, ref_answer)
-                        recall = retrieval_recall_at_k(retrieved_texts, ref_answer, k=5)
-                else:
-                    # Pour LLM simple, fidélité = qualité (par défaut)
-                    faithfulness = quality
-
-                eval_details.append({
-                    "question": q[:100],
-                    "quality": round(quality, 4),
-                    "faithfulness": round(faithfulness, 4),
-                    "retrieval_precision": round(precision, 4),
-                    "retrieval_recall": round(recall, 4),
-                    "latency_seconds": round(latency, 3)
-                })
-            except Exception as e:
-                eval_details.append({
-                    "question": q[:100],
-                    "error": str(e)
-                })
-
-        # Calcul des moyennes
-        valid = [d for d in eval_details if "quality" in d]
-        if valid:
-            avg_quality = np.mean([d["quality"] for d in valid]) * 100
-            avg_faith = np.mean([d["faithfulness"] for d in valid]) * 100
-            avg_prec = np.mean([d["retrieval_precision"] for d in valid]) * 100
-            avg_recall = np.mean([d["retrieval_recall"] for d in valid]) * 100
-            avg_lat = np.mean([d["latency_seconds"] for d in valid])    
-        else:
-            avg_quality = avg_faith = avg_prec = avg_recall = avg_lat = 0.0
-
-        results[proc["name"]] = {
-            "average": {
-                "quality": round(avg_quality, 2), # en %
-                "faithfulness": round(avg_faith, 2), # en %
-                "retrieval_precision": round(avg_prec, 2), # en %
-                "retrieval_recall_at_5": round(avg_recall, 2), # en %
-                "latency_seconds": round(avg_lat, 3) # en secondes
-            },
-            "details": eval_details
-        }
+    
+    results = run_evaluations(questions)
 
     return jsonify(results), 200
