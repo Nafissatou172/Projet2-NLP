@@ -1,77 +1,174 @@
-# 🇸🇳 FinChat Senegal - Assistance Financière Intelligente 🇸🇳
+# 🇸🇳 FinChat Senegal — Assistance Financière Intelligente 🇸🇳
 
-FinChat-SN est une plateforme applicative novatrice (Backend Flask + Frontend React) conçue pour comparer et illustrer différentes architectures de Modèles d'Intelligence Artificielle de Traitement du Langage Naturel (NLP). Elle se spécialise dans l'assistance financière, utilisant un ensemble de documents financiers complexes.
+**FinChat-SN** est une plateforme applicative complète (Backend Flask + Frontend React/TypeScript) conçue pour comparer et illustrer différentes architectures de traitement du langage naturel (NLP) appliquées à l'assistance financière.
 
-L'objectif de ce projet est de démontrer l'évolution et l'optimisation des réponses d'un LLM depuis un appel standard vers des architectures complexes (RAG, ReAct Agent, Workflow Multi-Agents) et d'y adosser un système complet d'évaluation temps réel des performances.
+L'objectif est de démontrer l'évolution des réponses d'un LLM depuis un appel simple jusqu'aux architectures avancées (RAG, RAFT, ReAct Agent, Multi-Agents) avec un système complet d'évaluation des performances en temps réel.
 
-## 📁 Structure globale du Projet
+---
+
+## 📁 Structure du Projet
 
 ```text
 Projet2-NLP/
-├── backend/                   # Dossier contenant toute la logique serveur & IA
-│   ├── app.py                 # Point d'entrée de l'API Flask
-│   ├── routes.py              # Définition de toutes nos routes /api et des endpoints de traitement
-│   ├── requirements.txt       # Dépendances Python nécessaires (Flask, ChromaDB, HuggingFace, etc.)
-│   ├── benchmark/             # Module dédié au benchmarking de différents modèles
-│   │   ├── model_clients.py   # Gestion de la communication avec mistral-api, groq, huggingface_chat
-│   │   └── models_config.py   # Configuration et listing statique des LLMs disponibles
-│   ├── utils/                 # Cœur algorithmique - Les différents pipelines RAG
-│   │   ├── agent.py               # Implémentation de l'Agent IA ReAct (Boucle d'action/observation)
-│   │   ├── evaluations.py         # Métriques d'évaluations (Cosine Similarity, Précision, Recall@K, Latence)
-│   │   ├── multi_agent.py         # Implémentation de l'architecture "Linguist Chain" à 3 Agents (Searcher, Critic, Generator)
-│   │   ├── rag_optimized_functions.py # Logique RAG (BM25, Re-Ranking et Vector Store)
-│   │   └── rag_simple_functions.py    # Logique RAG de base (Recherche par cosinus standard)
-│   ├── chroma_db/             # Base de données vectorielle (Chroma) pour le stockage des embeddings
-│   ├── dataset/               # Ensembles de tests (CSV de Q&A de références) utilisés pour évaluer le RAG
-│   └── documents/             # Base documentaire d'origine (les PDF de finance pour populer la DB vectorielle)
+├── backend/
+│   ├── app.py                          # Point d'entrée Flask
+│   ├── routes.py                       # Tous les endpoints /api/*
+│   ├── requirements.txt                # Dépendances Python
+│   ├── env.example                     # Modèle de configuration des variables d'environnement
+│   ├── data_quality.py                 # Script d'analyse de la qualité des données
+│   ├── benchmark/
+│   │   ├── model_clients.py            # Clients Mistral, Groq, HuggingFace
+│   │   └── models_config.py            # Configuration des LLMs disponibles
+│   ├── utils/
+│   │   ├── agent.py                    # Agent ReAct (boucle Thought → Action → Observation)
+│   │   ├── evaluations.py              # Métriques : Cosine Similarity, Précision, Recall@K, Latence
+│   │   ├── multi_agent.py              # Architecture 3-agents (Searcher → Critic → Generator)
+│   │   ├── raft.py                     # Simulation RAFT : oracle docs, distracteurs, CoT
+│   │   ├── rag_optimized_functions.py  # RAG hybride (BM25 + Vector + Re-Ranking)
+│   │   └── rag_simple_functions.py     # RAG basique (similarité cosinus)
+│   ├── chroma_db/                      # Base vectorielle ChromaDB (embeddings)
+│   ├── dataset/                        # Jeux de tests CSV (Q&A de référence)
+│   └── documents/                      # Documents PDF source (finance personnelle)
 │
-└── frontend/                  # Dossier contenant l'application Client
+└── frontend/
     ├── src/
-    │   ├── App.tsx            # Composant principal d'orchestration (IHM principale, Appels API)
-    │   ├── components/        # Dossier contenant l'interface modulaire
-    │   │   ├── ChatInterface.tsx         # Le module de Chat (discussion avec l'assistant)
-    │   │   ├── EvaluationDashboard.tsx   # Dashboard graphique traçant nos scores (Recharts)
-    │   │   ├── BenchmarkSection.tsx      # Panneau latéral pour configurer ou lancer un test benchmark
-    │   │   └── Sidebar.tsx               # Panneau de navigation latéral entre les différents modes RAG
-    │   ├── types/             # Interface Typescript (Message, ProcessType, Metrics, etc.)
-    │   └── data/              # Mock Data ou données locales pour les fallbackUI
-    ├── package.json           # Dépendances Node.js (React, Vite, Recharts, TailwindCSS)
-    └── index.html             # Template HTML applicatif
+    │   ├── App.tsx                     # Orchestrateur principal (état, appels API)
+    │   ├── components/
+    │   │   ├── ChatInterface.tsx        # Interface de chat + panneau d'analyse adaptatif
+    │   │   ├── RaftPanel.tsx            # Visualisation RAFT (oracle, distracteurs, CoT, stats)
+    │   │   ├── EvaluationDashboard.tsx  # Dashboard de scores (graphiques Recharts)
+    │   │   ├── BenchmarkSection.tsx     # Lancement et résultats de benchmarks LLM
+    │   │   ├── ProcessSelector.tsx      # Sélecteur de pipeline IA
+    │   │   └── Sidebar.tsx             # Navigation latérale
+    │   ├── types/                       # Interfaces TypeScript (Message, ProcessType, Metrics…)
+    │   └── data/                        # Données mock / fallback UI
+    ├── package.json
+    └── index.html
 ```
 
-## 🧠 Fonctionnalités Principales (Architectures Comparées)
+---
 
-Le projet intègre 5 pipelines de fonctionnement, sélectionnables depuis le Front-end :
+## 🧠 Architectures Comparées (6 Pipelines)
 
-1. **LLM simple** : Interrogation directe du modèle IA, sans aucune connaissance ajoutée.
-2. **RAG** : Retrieval-Augmented Generation basique avec recherche vectorielle classique.
-3. **RAG Optimisé** : Amélioration du processus via un algorithme de Re-Ranking (Tri intelligent).
-4. **RAG + Agent IA (ReAct)** : Un Agent qui décide de manière autonome quand il doit ou non faire des recherches additionnelles.
-5. **RAG + Multi-agents** : Un système robuste en 3 temps (Le "Chercheur", L'"Évaluateur" (Critic), et Le "Rédacteur"). Ils collaborent et valident la véracité des informations trouvées avant de répondre à l'utilisateur final.
+Sélectionnables en temps réel depuis l'interface de chat :
+
+| # | Pipeline | Description |
+|---|----------|-------------|
+| 1 | **LLM simple** | Appel direct au modèle sans contexte externe |
+| 2 | **RAG** | Retrieval-Augmented Generation — recherche vectorielle classique |
+| 3 | **RAG Optimisé** | RAG hybride BM25 + vecteurs avec re-ranking cross-encoder |
+| 4 | **RAG fine-tuné (RAFT)** | Simulation RAFT : oracle docs réels + distracteurs + raisonnement CoT |
+| 5 | **RAG + Agent IA** | Agent autonome ReAct qui décide quand lancer des recherches supplémentaires |
+| 6 | **RAG + Multi-agents** | Pipeline 3-agents : Searcher → Critic → Generator avec validation du contexte |
+
+### 🔬 Simulation RAFT (Retrieval-Augmented Fine-Tuning)
+
+Le pipeline RAFT simule l'entraînement d'un modèle affiné :
+- **Documents Oracle** : chunks réellement pertinents à la question
+- **Distracteurs** : chunks non pertinents volontairement injectés
+- **Raisonnement Chain-of-Thought** : le modèle justifie sa sélection de documents
+- **Statistiques** : ratio oracle, tokens, latence, score de structure
+
+### 🤖 Panneau d'Analyse Adaptatif
+
+Après chaque réponse des pipelines Agent, Multi-agents ou RAFT, un **panneau dépliable** s'affiche automatiquement avec les statistiques du pipeline utilisé. Le titre et la couleur s'adaptent selon le processus :
+
+| Pipeline | Titre du panneau | Couleur |
+|----------|-----------------|---------|
+| RAG fine-tuné (RAFT) | Analyse RAFT | 🟣 Violet |
+| RAG + Agent IA | Analyse Agent IA (ReAct) | 🔵 Bleu |
+| RAG + Multi-agents | Analyse Multi-agents | 🟠 Ambre |
+
+---
 
 ## 📊 Évaluation Automatisée
 
-La plateforme est livrée avec un évaluateur embarqué via l'onglet `Évaluation` du Frontend.
-Il analyse toutes les approches ci-dessus simultanément et trace en direct un comparatif basé sur plusieurs KPIs :
-* **Qualité** (Cosine Similarity VS référence)
-* **Fidélité** (S'assure que le modèle n'hallucine pas en dehors du document trouvé)
-* **Précision Retrieval & Recall@5** (Qualité des chunks sélectionnés)
-* **Latence (Vitesse)**
+Accessible depuis l'onglet **Évaluation** du frontend, le module teste simultanément tous les pipelines sur un échantillon de questions de référence et génère un tableau de bord comparatif :
+
+| Métrique | Description |
+|----------|-------------|
+| **Cosine Similarity** | Proximité sémantique avec la réponse de référence |
+| **Fidélité** | Détection d'hallucinations hors contexte |
+| **Précision Retrieval** | Qualité des documents récupérés |
+| **Recall@5** | Couverture des documents pertinents dans le top 5 |
+| **Latence** | Temps de réponse de bout en bout |
+
+---
+
+## ⚙️ Configuration
+
+### Variables d'environnement
+
+Copiez `env.example` vers `.env` dans le dossier `backend/` et renseignez vos clés :
+
+```bash
+cp backend/env.example backend/.env
+```
+
+```env
+FLASK_DEBUG=True
+SECRET_KEY=change-me-in-production
+PORT=5001
+
+HUGGINGFACE_API_KEY=**clé_huggingface**
+ANTHROPIC_API_KEY=**clé_anthropic**
+MISTRAL_API_KEY=**clé_mistral**
+GROQ_API_KEY=**clé_groq**
+
+MOCK_MODE=false
+```
+
+> **Note :** Seul `HUGGINGFACE_API_KEY` est strictement requis pour le pipeline RAG (embeddings). Les autres clés activent les modèles LLM correspondants dans le benchmark.
+
+---
 
 ## 🚀 Lancement
 
-**Backend :**
+### Backend (Flask — Python 3.10+)
+
 ```bash
 cd backend
 pip install -r requirements.txt
 python app.py
 ```
-*Le backend sera servi par défaut sur http://localhost:5001.* *(Veuillez posséder votre `.env` à la racine backend)*
 
-**Frontend :**
+> Le serveur démarre sur **http://localhost:5001**
+
+### Frontend (React + Vite — Node 18+)
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-*Le frontend sera disponible pour ouvrir dans votre navigateur depuis http://localhost:5173.*
+
+> L'interface est accessible sur **http://localhost:5173**
+
+---
+
+## 🛠️ Stack Technique
+
+| Couche | Technologies |
+|--------|-------------|
+| **LLM** | OpenAI-compatible API, Groq, Mistral, HuggingFace Inference |
+| **Embeddings** | `sentence-transformers` via HuggingFace |
+| **Vector Store** | ChromaDB |
+| **Re-ranking** | BM25 (`rank_bm25`) + Cross-encoder |
+| **Backend** | Flask, Python |
+| **Frontend** | React 18, TypeScript, Vite, Lucide Icons, Recharts |
+| **Styles** | TailwindCSS |
+
+---
+
+## 📝 Endpoints API
+
+| Méthode | Route | Description |
+|---------|-------|-------------|
+| `POST` | `/api/llm-simple` | Réponse LLM directe |
+| `POST` | `/api/rag-simple` | RAG basique |
+| `POST` | `/api/rag-optimized` | RAG hybride + re-ranking |
+| `POST` | `/api/raft` | Simulation RAFT (oracle + distracteurs + CoT) |
+| `POST` | `/api/rag-agent` | Agent ReAct |
+| `POST` | `/api/rag-multi-agent` | Pipeline multi-agents |
+| `GET`  | `/api/evaluations` | Évaluation comparative (`?sample_size=N`) |
+| `POST` | `/api/benchmark` | Benchmark multi-modèles |
