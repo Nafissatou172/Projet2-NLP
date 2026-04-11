@@ -662,6 +662,12 @@ from utils.agent import run_react_agent
 
 @api_bp.route("/rag-agent", methods=["POST"])
 def rag_agent_endpoint():
+    """
+    Agent ReAct enrichi RAFT :
+      Phase 1 — boucle ReAct (search_documents jusqu'à trouver les oracles)
+      Phase 2 — injection de distracteurs + CoT RAFT pour identifier les oracles
+    Retourne : response, reasoning, oracle_docs, distractor_docs, raft_stats
+    """
     body = request.get_json(silent=True)
     if not body or "question" not in body:
         return jsonify({"error": "Question manquante"}), 400
@@ -671,14 +677,20 @@ def rag_agent_endpoint():
         return jsonify({"error": "Question vide"}), 400
 
     collection = get_rag_collection()
-    
+    if collection.count() == 0:
+        return jsonify({"error": "Aucun document indexé. Ajoutez des PDF/DOCX dans 'documents/'."}), 400
+
     try:
         result = run_react_agent(collection, question)
         if "error" in result:
             return jsonify({"error": result["error"]}), 500
+
+        # Nettoyage de la réponse et du raisonnement
+        result["response"]  = clean_response(result.get("response", ""))
+        result["reasoning"] = clean_response(result.get("reasoning", ""))
         return jsonify(result), 200
     except Exception as e:
-        return jsonify({"error": f"Erreur interne Agent : {str(e)}"}), 500
+        return jsonify({"error": f"Erreur interne Agent RAFT : {str(e)}"}), 500
 
 # ─────────────────────────────────────────────
 #  Endpoint du RAG Multi-Agent
@@ -687,6 +699,11 @@ from utils.multi_agent import run_multi_agent_rag
 
 @api_bp.route("/rag-multi-agent", methods=["POST"])
 def rag_multi_agent_endpoint():
+    """
+    Multi-Agent RAFT :
+      Searcher → Critic (boucle) → injection distracteurs → Generator CoT RAFT
+    Retourne : response, reasoning, oracle_docs, distractor_docs, raft_stats
+    """
     body = request.get_json(silent=True)
     if not body or "question" not in body:
         return jsonify({"error": "Question manquante"}), 400
@@ -696,17 +713,141 @@ def rag_multi_agent_endpoint():
         return jsonify({"error": "Question vide"}), 400
 
     collection = get_rag_collection()
-    
+    if collection.count() == 0:
+        return jsonify({"error": "Aucun document indexé. Ajoutez des PDF/DOCX dans 'documents/'."}), 400
+
     try:
         result = run_multi_agent_rag(collection, question)
         if "error" in result:
             return jsonify({"error": result["error"]}), 500
-        
-        # Nettoyage si nécessaire (bien que déjà propre selon nos paramètres, c'est plus sûr)
-        result["response"] = clean_response(result["response"])
+
+        # Nettoyage de la réponse et du raisonnement
+        result["response"]  = clean_response(result.get("response", ""))
+        result["reasoning"] = clean_response(result.get("reasoning", ""))
         return jsonify(result), 200
     except Exception as e:
-        return jsonify({"error": f"Erreur interne Multi-Agent : {str(e)}"}), 500
+        return jsonify({"error": f"Erreur interne Multi-Agent RAFT : {str(e)}"}), 500
+
+
+# ─────────────────────────────────────────────
+#  Endpoint RAFT (Retrieval-Augmented Fine-Tuning)
+# ─────────────────────────────────────────────
+from utils.raft import run_raft_inference, build_raft_dataset, generate_raft_report
+
+@api_bp.route("/raft", methods=["POST"])
+def raft_endpoint():
+    """
+    Inférence RAFT : répond à une question en présentant au LLM un mix de
+    documents oracle (pertinents) et de distracteurs, forçant un raisonnement
+    Chain-of-Thought pour filtrer les sources non pertinentes.
+    """
+    body = request.get_json(silent=True)
+    if not body or "question" not in body:
+        return jsonify({"error": "Question manquante"}), 400
+
+    question = body["question"].strip()
+    if not question:
+        return jsonify({"error": "Question vide"}), 400
+
+    # Paramètres optionnels
+    num_oracle     = body.get("num_oracle", 2)
+    num_distractors = body.get("num_distractors", 2)
+
+    collection = get_rag_collection()
+    if collection.count() == 0:
+        return jsonify({"error": "Aucun document indexé. Ajoutez des PDF/DOCX dans 'documents/'."}), 400
+
+    try:
+        result = run_raft_inference(
+            question=question,
+            collection=collection,
+            num_oracle=num_oracle,
+            num_distractors=num_distractors,
+        )
+        if "error" in result:
+            return jsonify({"error": result["error"]}), 500
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Erreur interne RAFT : {str(e)}"}), 500
+
+
+@api_bp.route("/raft/build-dataset", methods=["POST"])
+def raft_build_dataset():
+    """
+    Construit un dataset RAFT synthétique à partir des questions du dataset
+    et de la collection vectorielle.
+    Retourne un rapport + un échantillon des entrées générées.
+    """
+    body = request.get_json(silent=True) or {}
+    sample_size = body.get("sample_size", 10)
+
+    try:
+        questions = _load_dataset(sample_size=sample_size)
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 500
+
+    if not questions:
+        return jsonify({"error": "Dataset vide ou filtres trop restrictifs."}), 400
+
+    collection = get_rag_collection()
+    if collection.count() == 0:
+        return jsonify({"error": "Aucun document indexé dans ChromaDB."}), 400
+
+    try:
+        dataset = build_raft_dataset(
+            questions=questions,
+            collection=collection,
+            top_k=4,
+        )
+        report = generate_raft_report(dataset)
+
+        # On ne renvoie pas tout le dataset (potentiellement très grand)
+        # mais un rapport + les 3 premiers exemples
+        return jsonify({
+            "report": report,
+            "sample_entries": dataset[:3],
+            "total_entries_generated": len(dataset),
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Erreur construction dataset RAFT : {str(e)}"}), 500
+
+
+@api_bp.route("/raft/status", methods=["GET"])
+def raft_status():
+    """
+    Retourne le statut et la configuration du module RAFT.
+    """
+    from utils.raft import (
+        RAFT_NUM_DOCS, RAFT_ORACLE_RATIO, RAFT_DISTRACTOR_RATIO,
+        RAFT_PRIMARY_MODEL, RAFT_MAX_TOKENS
+    )
+    collection = get_rag_collection()
+    doc_count = collection.count() if collection else 0
+
+    return jsonify({
+        "status": "active",
+        "description": (
+            "RAFT (Retrieval-Augmented Fine-Tuning) simule un modèle fine-tuné "
+            "capable d'identifier les documents oracle parmi des distracteurs, "
+            "en utilisant un raisonnement Chain-of-Thought."
+        ),
+        "config": {
+            "num_docs_total": RAFT_NUM_DOCS,
+            "oracle_ratio": RAFT_ORACLE_RATIO,
+            "distractor_ratio": RAFT_DISTRACTOR_RATIO,
+            "primary_model": RAFT_PRIMARY_MODEL,
+            "max_tokens": RAFT_MAX_TOKENS,
+        },
+        "vector_store": {
+            "document_chunks_indexed": doc_count,
+            "ready": doc_count > 0,
+        },
+        "endpoints": [
+            {"POST /api/raft": "Inférence RAFT sur une question"},
+            {"POST /api/raft/build-dataset": "Génère un dataset RAFT synthétique"},
+            {"GET  /api/raft/status": "Statut et configuration du module RAFT"},
+        ],
+    }), 200
 
 # ─────────────────────────────────────────────
 #  Evaluation des modèles LLM simple ; RAG; RAG optimisé ; RAFT; RAG Agent ; RAG multi-agent
