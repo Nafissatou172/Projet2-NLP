@@ -656,10 +656,204 @@ def rag_index_info():
 
 
 # ─────────────────────────────────────────────
+#  Endpoint du RAG Agent
+# ─────────────────────────────────────────────
+from utils.agent import run_react_agent
+
+@api_bp.route("/rag-agent", methods=["POST"])
+def rag_agent_endpoint():
+    """
+    Agent ReAct enrichi RAFT :
+      Phase 1 — boucle ReAct (search_documents jusqu'à trouver les oracles)
+      Phase 2 — injection de distracteurs + CoT RAFT pour identifier les oracles
+    Retourne : response, reasoning, oracle_docs, distractor_docs, raft_stats
+    """
+    body = request.get_json(silent=True)
+    if not body or "question" not in body:
+        return jsonify({"error": "Question manquante"}), 400
+
+    question = body["question"].strip()
+    if not question:
+        return jsonify({"error": "Question vide"}), 400
+
+    collection = get_rag_collection()
+    if collection.count() == 0:
+        return jsonify({"error": "Aucun document indexé. Ajoutez des PDF/DOCX dans 'documents/'."}), 400
+
+    try:
+        result = run_react_agent(collection, question)
+        if "error" in result:
+            return jsonify({"error": result["error"]}), 500
+
+        # Nettoyage de la réponse et du raisonnement
+        result["response"]  = clean_response(result.get("response", ""))
+        result["reasoning"] = clean_response(result.get("reasoning", ""))
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Erreur interne Agent RAFT : {str(e)}"}), 500
+
+# ─────────────────────────────────────────────
+#  Endpoint du RAG Multi-Agent
+# ─────────────────────────────────────────────
+from utils.multi_agent import run_multi_agent_rag
+
+@api_bp.route("/rag-multi-agent", methods=["POST"])
+def rag_multi_agent_endpoint():
+    """
+    Multi-Agent RAFT :
+      Searcher → Critic (boucle) → injection distracteurs → Generator CoT RAFT
+    Retourne : response, reasoning, oracle_docs, distractor_docs, raft_stats
+    """
+    body = request.get_json(silent=True)
+    if not body or "question" not in body:
+        return jsonify({"error": "Question manquante"}), 400
+
+    question = body["question"].strip()
+    if not question:
+        return jsonify({"error": "Question vide"}), 400
+
+    collection = get_rag_collection()
+    if collection.count() == 0:
+        return jsonify({"error": "Aucun document indexé. Ajoutez des PDF/DOCX dans 'documents/'."}), 400
+
+    try:
+        result = run_multi_agent_rag(collection, question)
+        if "error" in result:
+            return jsonify({"error": result["error"]}), 500
+
+        # Nettoyage de la réponse et du raisonnement
+        result["response"]  = clean_response(result.get("response", ""))
+        result["reasoning"] = clean_response(result.get("reasoning", ""))
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Erreur interne Multi-Agent RAFT : {str(e)}"}), 500
+
+
+# ─────────────────────────────────────────────
+#  Endpoint RAFT (Retrieval-Augmented Fine-Tuning)
+# ─────────────────────────────────────────────
+from utils.raft import run_raft_inference, build_raft_dataset, generate_raft_report
+
+@api_bp.route("/raft", methods=["POST"])
+def raft_endpoint():
+    """
+    Inférence RAFT : répond à une question en présentant au LLM un mix de
+    documents oracle (pertinents) et de distracteurs, forçant un raisonnement
+    Chain-of-Thought pour filtrer les sources non pertinentes.
+    """
+    body = request.get_json(silent=True)
+    if not body or "question" not in body:
+        return jsonify({"error": "Question manquante"}), 400
+
+    question = body["question"].strip()
+    if not question:
+        return jsonify({"error": "Question vide"}), 400
+
+    # Paramètres optionnels
+    num_oracle     = body.get("num_oracle", 2)
+    num_distractors = body.get("num_distractors", 2)
+
+    collection = get_rag_collection()
+    if collection.count() == 0:
+        return jsonify({"error": "Aucun document indexé. Ajoutez des PDF/DOCX dans 'documents/'."}), 400
+
+    try:
+        result = run_raft_inference(
+            question=question,
+            collection=collection,
+            num_oracle=num_oracle,
+            num_distractors=num_distractors,
+        )
+        if "error" in result:
+            return jsonify({"error": result["error"]}), 500
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Erreur interne RAFT : {str(e)}"}), 500
+
+
+@api_bp.route("/raft/build-dataset", methods=["POST"])
+def raft_build_dataset():
+    """
+    Construit un dataset RAFT synthétique à partir des questions du dataset
+    et de la collection vectorielle.
+    Retourne un rapport + un échantillon des entrées générées.
+    """
+    body = request.get_json(silent=True) or {}
+    sample_size = body.get("sample_size", 10)
+
+    try:
+        questions = _load_dataset(sample_size=sample_size)
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 500
+
+    if not questions:
+        return jsonify({"error": "Dataset vide ou filtres trop restrictifs."}), 400
+
+    collection = get_rag_collection()
+    if collection.count() == 0:
+        return jsonify({"error": "Aucun document indexé dans ChromaDB."}), 400
+
+    try:
+        dataset = build_raft_dataset(
+            questions=questions,
+            collection=collection,
+            top_k=4,
+        )
+        report = generate_raft_report(dataset)
+
+        # On ne renvoie pas tout le dataset (potentiellement très grand)
+        # mais un rapport + les 3 premiers exemples
+        return jsonify({
+            "report": report,
+            "sample_entries": dataset[:3],
+            "total_entries_generated": len(dataset),
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Erreur construction dataset RAFT : {str(e)}"}), 500
+
+
+@api_bp.route("/raft/status", methods=["GET"])
+def raft_status():
+    """
+    Retourne le statut et la configuration du module RAFT.
+    """
+    from utils.raft import (
+        RAFT_NUM_DOCS, RAFT_ORACLE_RATIO, RAFT_DISTRACTOR_RATIO,
+        RAFT_PRIMARY_MODEL, RAFT_MAX_TOKENS
+    )
+    collection = get_rag_collection()
+    doc_count = collection.count() if collection else 0
+
+    return jsonify({
+        "status": "active",
+        "description": (
+            "RAFT (Retrieval-Augmented Fine-Tuning) simule un modèle fine-tuné "
+            "capable d'identifier les documents oracle parmi des distracteurs, "
+            "en utilisant un raisonnement Chain-of-Thought."
+        ),
+        "config": {
+            "num_docs_total": RAFT_NUM_DOCS,
+            "oracle_ratio": RAFT_ORACLE_RATIO,
+            "distractor_ratio": RAFT_DISTRACTOR_RATIO,
+            "primary_model": RAFT_PRIMARY_MODEL,
+            "max_tokens": RAFT_MAX_TOKENS,
+        },
+        "vector_store": {
+            "document_chunks_indexed": doc_count,
+            "ready": doc_count > 0,
+        },
+        "endpoints": [
+            {"POST /api/raft": "Inférence RAFT sur une question"},
+            {"POST /api/raft/build-dataset": "Génère un dataset RAFT synthétique"},
+            {"GET  /api/raft/status": "Statut et configuration du module RAFT"},
+        ],
+    }), 200
+
+# ─────────────────────────────────────────────
 #  Evaluation des modèles LLM simple ; RAG; RAG optimisé ; RAFT; RAG Agent ; RAG multi-agent
 # ─────────────────────────────────────────────
 
-from utils.evaluations import retrieval_precision, retrieval_recall_at_k, cosine_similarity_between, get_embedder
+from utils.evaluations import retrieval_precision, retrieval_recall_at_k, cosine_similarity_between, get_embedder, run_evaluations
 from sentence_transformers import SentenceTransformer, util
 
 # Les processus sont évalués sur 30 questions du dataset à défaut de préciser le sample_size 
@@ -675,96 +869,7 @@ def evaluations():
     sample_size = request.args.get("sample_size", default=30, type=int)
     # Charger un échantillon du dataset (ou tout)
     questions = _load_dataset(sample_size=sample_size)
-
-    processes = [
-        {"name": "LLM simple", "endpoint": "/llm-simple", "has_retrieval": False},
-        {"name": "RAG", "endpoint": "/rag-simple", "has_retrieval": True},
-        {"name": "RAG optimisé", "endpoint": "/rag-optimized", "has_retrieval": True},
-    ]
-
-    base_url = "http://localhost:5001"
-    results = {}
-
-    for proc in processes:
-        eval_details = []
-        for item in questions:
-            q = item["question"]
-            ref_answer = item["reponse"]
-
-            try:
-                start = time.perf_counter()
-                resp = requests.post(f"{base_url}/api{proc['endpoint']}", json={"question": q}, timeout=90)
-                latency = time.perf_counter() - start
-                if resp.status_code != 200:
-                    raise Exception(resp.json().get("error", "Erreur API"))
-                data = resp.json()
-
-                generated = data.get("response", "")
-                # Qualité : similarité entre réponse générée et référence
-                quality = cosine_similarity_between(generated, ref_answer)
-
-                # Fidélité : similarité entre génération et contexte (si retrieval)
-                faithfulness = 0.0
-                precision = recall = 0.0
-                if proc["has_retrieval"]:
-                    # Récupérer les chunks (selon le format renvoyé)
-                    if proc["name"] == "RAG":
-                        chunks = data.get("context_chunks", [])
-                        # context_chunks est une liste de dict avec "text"
-                        retrieved_texts = [c.get("text", "") for c in chunks if c.get("text")]
-                    else:  # RAG optimisé
-                        retrieved_texts = data.get("retrieved_chunks", [])
-                        if retrieved_texts and isinstance(retrieved_texts[0], dict):
-                            retrieved_texts = [c.get("text", "") for c in retrieved_texts]
-
-                    if retrieved_texts:
-                        # Fidélité : similarité max entre génération et chaque chunk (ou moyenne)
-                        gen_emb = get_embedder().encode(generated)
-                        chunk_embs = get_embedder().encode(retrieved_texts)
-                        sims = util.cos_sim(gen_emb, chunk_embs)[0].tolist()
-                        faithfulness = max(sims)  # la meilleure correspondance 
-
-                        # Métriques de retrieval
-                        precision = retrieval_precision(retrieved_texts, ref_answer)
-                        recall = retrieval_recall_at_k(retrieved_texts, ref_answer, k=5)
-                else:
-                    # Pour LLM simple, fidélité = qualité (par défaut)
-                    faithfulness = quality
-
-                eval_details.append({
-                    "question": q[:100],
-                    "quality": round(quality, 4),
-                    "faithfulness": round(faithfulness, 4),
-                    "retrieval_precision": round(precision, 4),
-                    "retrieval_recall": round(recall, 4),
-                    "latency_seconds": round(latency, 3)
-                })
-            except Exception as e:
-                eval_details.append({
-                    "question": q[:100],
-                    "error": str(e)
-                })
-
-        # Calcul des moyennes
-        valid = [d for d in eval_details if "quality" in d]
-        if valid:
-            avg_quality = np.mean([d["quality"] for d in valid]) * 100
-            avg_faith = np.mean([d["faithfulness"] for d in valid]) * 100
-            avg_prec = np.mean([d["retrieval_precision"] for d in valid]) * 100
-            avg_recall = np.mean([d["retrieval_recall"] for d in valid]) * 100
-            avg_lat = np.mean([d["latency_seconds"] for d in valid])    
-        else:
-            avg_quality = avg_faith = avg_prec = avg_recall = avg_lat = 0.0
-
-        results[proc["name"]] = {
-            "average": {
-                "quality": round(avg_quality, 2), # en %
-                "faithfulness": round(avg_faith, 2), # en %
-                "retrieval_precision": round(avg_prec, 2), # en %
-                "retrieval_recall_at_5": round(avg_recall, 2), # en %
-                "latency_seconds": round(avg_lat, 3) # en secondes
-            },
-            "details": eval_details
-        }
+    
+    results = run_evaluations(questions)
 
     return jsonify(results), 200

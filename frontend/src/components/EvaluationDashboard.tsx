@@ -9,7 +9,7 @@ interface EvaluationDashboardProps {
   isEvaluating: boolean;
 }
 
-const processOrder = ['LLM simple', 'RAG', 'RAG optimisé'];
+const processOrder = ['LLM simple', 'RAG', 'RAG optimisé', 'RAG Agent', 'RAG + Multi-agents'];
 const metricNames = {
   quality: 'Qualité',
   faithfulness: 'Fidélité',

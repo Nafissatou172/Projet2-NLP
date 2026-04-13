@@ -74,7 +74,7 @@ function App() {
     
    if (selectedProcess === 'RAG optimisé') {
       try {
-        const response = await fetch('api/rag-optimized', {
+        const response = await fetch('/api/rag-optimized', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question: content }),
@@ -93,6 +93,65 @@ function App() {
       }
       return;
    }
+
+    if (selectedProcess === 'RAG + Agent IA') {
+      try {
+        const response = await fetch('/api/rag-agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: content }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Erreur inconnue');
+        
+        let assistantContent = data.response;
+        // Optionnel: On peut afficher le fait qu'il a utilisé des outils
+        if (data.tools_used_count > 0) {
+            assistantContent = `*(A cherché dans la base de données)*\n\n${assistantContent}`;
+        }
+        
+        setMessages((prev) => [...prev, { 
+          role: 'assistant', 
+          content: assistantContent,
+          sources: data.sources || [] 
+        }]);
+      } catch (error: any) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: `Erreur : ${error.message}` }]);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+   }
+
+    if (selectedProcess === 'RAG + Multi-agents') {
+      try {
+        const response = await fetch('/api/rag-multi-agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: content }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Erreur inconnue');
+        
+        let assistantContent = data.response;
+        // On affiche le feedback
+        if (data.loops_count > 0) {
+            assistantContent = `*(Le sous-système a effectué ${data.loops_count} itération(s) de recherche avec l'Évaluateur)*\n\n${assistantContent}`;
+        }
+        
+        setMessages((prev) => [...prev, { 
+          role: 'assistant', 
+          content: assistantContent,
+          sources: data.sources || [] 
+        }]);
+      } catch (error: any) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: `Erreur : ${error.message}` }]);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+   }
+
     // Autres processus : simulation
     const delays: Record<ProcessType, number> = {
       'LLM simple': 800,
