@@ -1,1 +1,1 @@
-4 qualités : la qualité de la réponse (en particulier l'exactitude), la fidélité au contexte, la latence et le coût
+4 qualités : la qualité de la réponse (en particulier l'exactitude), la fidélité au contexte, la latence et le coût et la précision
