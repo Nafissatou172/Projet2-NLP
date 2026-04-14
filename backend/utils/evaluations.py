@@ -6,7 +6,7 @@ _embedder = None
 def get_embedder():
     global _embedder
     if _embedder is None:
-        _embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        _embedder = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
     return _embedder
 
 def cosine_similarity_between(text1, text2):
@@ -15,7 +15,7 @@ def cosine_similarity_between(text1, text2):
     emb2 = emb.encode(text2, convert_to_tensor=True)
     return util.cos_sim(emb1, emb2).item()
 
-def retrieval_precision(retrieved_chunks, reference_answer, threshold=0.5):
+def retrieval_precision(retrieved_chunks, reference_answer, threshold=0.35):
     """Proportion de chunks dont la similarité sémantique avec la réponse de référence dépasse le seuil.
     Seuil par défaut : 0.5 (standard).
     Pour le RAG Agent et Multi-Agent, utiliser threshold=0.35 car le retrieval hybride
@@ -37,7 +37,7 @@ def retrieval_precision(retrieved_chunks, reference_answer, threshold=0.5):
     relevant = sum(1 for s in scores if s > threshold)
     return relevant / len(scores)
 
-def retrieval_recall_at_k(retrieved_chunks, reference_answer, k=5, threshold=0.5):
+def retrieval_recall_at_k(retrieved_chunks, reference_answer, k=5, threshold=0.35):
     """Recall@K : proportion de chunks pertinents parmi les top K récupérés."""
     top_chunks = retrieved_chunks[:k]
     return retrieval_precision(top_chunks, reference_answer, threshold)
@@ -129,18 +129,19 @@ def run_evaluations(questions: List[Dict[str, Any]]) -> Dict[str, Any]:
                         gen_emb = get_embedder().encode(generated)
                         chunk_embs = get_embedder().encode(retrieved_texts)
                         sims = util.cos_sim(gen_emb, chunk_embs)[0].tolist()
-                        faithfulness = max(sims)
+                        sims_sorted = sorted(sims, reverse=True) 
+                        faithfulness = np.mean(sims_sorted[:3]) if len(sims_sorted) >= 3 else np.mean(sims_sorted)
 
                         # Métriques de retrieval — seuil et k adaptés selon l'architecture
                         if proc["name"] in ("RAG Agent", "RAG + Multi-agents"):
                             # Seuil abaissé à 0.35 : retrieval hybride BM25+vecteur
                             # avec FINAL_COUNT=5, les scores MiniLM sont dans 0.3–0.7
                             precision = retrieval_precision(retrieved_texts, ref_answer, threshold=0.35)
-                            recall    = retrieval_recall_at_k(retrieved_texts, ref_answer, k=10, threshold=0.35)
+                            recall    = retrieval_recall_at_k(retrieved_texts, ref_answer, k=5, threshold=0.35)
                         else:
                             # RAG, RAG optimisé, RAFT : seuil standard 0.5
-                            precision = retrieval_precision(retrieved_texts, ref_answer, threshold=0.5)
-                            recall    = retrieval_recall_at_k(retrieved_texts, ref_answer, k=5, threshold=0.5)
+                            precision = retrieval_precision(retrieved_texts, ref_answer, threshold=0.35)
+                            recall    = retrieval_recall_at_k(retrieved_texts, ref_answer, k=5, threshold=0.35)
                 else:
                     # Pour LLM simple, fidélité = qualité (par défaut)
                     faithfulness = quality

@@ -11,7 +11,7 @@ MODELS_CONFIG = {
         "display_name": "Mistral 7B Instruct",
         "provider": "mistral_api",
         "model_id": "mistral-tiny",  # ou "open-mistral-7b"
-        "max_tokens": 512,
+        "max_tokens": 1024,
         "temperature": 0.1,
         "cost_per_1k_input_tokens": 0.00025,
         "cost_per_1k_output_tokens": 0.00025,
@@ -20,7 +20,7 @@ MODELS_CONFIG = {
         "display_name": "LLaMA 3 8B Instruct",
         "provider": "groq_api",  # ou "llama_api" selon votre fournisseur
         "model_id": "llama-3.1-8b-instant",
-        "max_tokens": 512,
+        "max_tokens": 1024,
         "temperature": 0.1,
         "cost_per_1k_input_tokens": 0.00025,
         "cost_per_1k_output_tokens": 0.00025,
@@ -29,7 +29,7 @@ MODELS_CONFIG = {
         "display_name": "Qwen 2.5 7B Instruct",
         "provider": "huggingface_chat",
         "model_id": "Qwen/Qwen2.5-7B-Instruct",
-        "max_tokens": 512,
+        "max_tokens": 1024,
         "temperature": 0.1,
         "cost_per_1k_input_tokens": 0.0,
         "cost_per_1k_output_tokens": 0.0,
