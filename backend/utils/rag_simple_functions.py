@@ -10,7 +10,7 @@ import chromadb
 from chromadb.utils import embedding_functions
 
 # Configuration
-CHUNK_SIZE = 1000
+CHUNK_SIZE = 600
 CHUNK_OVERLAP = 200
 TOP_K = 5
 
@@ -74,7 +74,7 @@ def init_vectorstore(documents_dir: Path, chroma_db_dir: Path) -> chromadb.Colle
     client = chromadb.PersistentClient(path=str(chroma_db_dir))
     
     embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="all-MiniLM-L6-v2"
+        model_name="paraphrase-multilingual-MiniLM-L12-v2"
     )
     
     collection_name = "finance_docs"

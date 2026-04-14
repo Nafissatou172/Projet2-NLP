@@ -10,6 +10,9 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   sources?: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  raftResult?: any;   // payload brut de /api/raft, /api/rag-agent, /api/rag-multi-agent
+  processName?: string; // nom du processus IA ayant généré la réponse
 }
 
 export interface BenchmarkMetric {

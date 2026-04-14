@@ -1,7 +1,7 @@
 """
 Évaluateurs pour les 4 piliers du benchmark :
-  1. Qualité / Exactitude   → similarité cosinus avec sentence-transformers
-  2. Fidélité au contexte   → overlap de mots-clés (keywords recall)
+  1. Qualité / Exactitude   → similarité cosinus sémantique (sentence-transformers)
+  2. Fidélité au contexte   → similarité sémantique + keyword recall combinés
   3. Latence               → temps de réponse mesuré directement
   4. Coût                  → calculé depuis les tokens consommés
 """
@@ -10,9 +10,24 @@ import re
 import math
 from typing import Optional
 
+from sentence_transformers import SentenceTransformer, util
 
 # ─────────────────────────────────────────────
-#  Utilitaires texte
+#  Modèle d'embedding (chargé une seule fois)
+# ─────────────────────────────────────────────
+
+_model = None
+
+def _get_model():
+    """Charge le modèle multilingue une seule fois."""
+    global _model
+    if _model is None:
+        _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+    return _model
+
+
+# ─────────────────────────────────────────────
+#  Utilitaires texte (pour keyword recall)
 # ─────────────────────────────────────────────
 
 _STOPWORDS_FR = {
@@ -30,64 +45,55 @@ def _tokenize(text: str) -> list[str]:
     return [t for t in tokens if t not in _STOPWORDS_FR and len(t) > 2]
 
 
-def _cosine_similarity(vec_a: dict, vec_b: dict) -> float:
-    """Cosine similarity entre deux vecteurs TF (bag-of-words)."""
-    common = set(vec_a) & set(vec_b)
-    if not common:
-        return 0.0
-    dot = sum(vec_a[k] * vec_b[k] for k in common)
-    norm_a = math.sqrt(sum(v ** 2 for v in vec_a.values()))
-    norm_b = math.sqrt(sum(v ** 2 for v in vec_b.values()))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
-def _tf(tokens: list[str]) -> dict[str, float]:
-    """Term frequency (non normalisé)."""
-    freq: dict[str, float] = {}
-    for t in tokens:
-        freq[t] = freq.get(t, 0) + 1
-    return freq
-
-
 # ─────────────────────────────────────────────
-#  1. Qualité / Exactitude
+#  1. Qualité / Exactitude (similarité sémantique)
 # ─────────────────────────────────────────────
 
 def evaluate_quality(generated: str, reference: str) -> float:
     """
-    Similarité cosinus (bag-of-words TF) entre la réponse générée
-    et la réponse de référence du dataset.
+    Similarité cosinus sémantique entre la réponse générée
+    et la réponse de référence, via un modèle multilingue.
     Retourne un score entre 0 et 1.
     """
     if not generated or not reference:
         return 0.0
-    tokens_gen = _tokenize(generated)
-    tokens_ref = _tokenize(reference)
-    if not tokens_gen or not tokens_ref:
-        return 0.0
-    return round(_cosine_similarity(_tf(tokens_gen), _tf(tokens_ref)), 4)
+    model = _get_model()
+    emb_gen = model.encode(generated, convert_to_tensor=True)
+    emb_ref = model.encode(reference, convert_to_tensor=True)
+    sim = util.cos_sim(emb_gen, emb_ref).item()
+    return round(max(0.0, sim), 4)
 
 
 # ─────────────────────────────────────────────
-#  2. Fidélité au contexte (keyword recall)
+#  2. Fidélité au contexte (sémantique + keywords)
 # ─────────────────────────────────────────────
 
 def evaluate_faithfulness(generated: str, reference: str) -> float:
     """
-    Proportion des mots-clés de la référence présents dans la réponse générée.
-    Mesure si le modèle n'hallucine pas et reste fidèle au contexte.
+    Score combiné :
+      - 70% similarité sémantique (le sens est-il préservé ?)
+      - 30% keyword recall (les termes-clés de la référence sont-ils présents ?)
     Retourne un score entre 0 et 1.
     """
     if not generated or not reference:
         return 0.0
+
+    # Partie sémantique (70%)
+    model = _get_model()
+    emb_gen = model.encode(generated, convert_to_tensor=True)
+    emb_ref = model.encode(reference, convert_to_tensor=True)
+    semantic_sim = max(0.0, util.cos_sim(emb_gen, emb_ref).item())
+
+    # Partie keyword recall (30%)
     ref_tokens = set(_tokenize(reference))
     gen_tokens = set(_tokenize(generated))
-    if not ref_tokens:
-        return 0.0
-    overlap = ref_tokens & gen_tokens
-    return round(len(overlap) / len(ref_tokens), 4)
+    if ref_tokens:
+        keyword_recall = len(ref_tokens & gen_tokens) / len(ref_tokens)
+    else:
+        keyword_recall = 0.0
+
+    score = 0.70 * semantic_sim + 0.30 * keyword_recall
+    return round(score, 4)
 
 
 # ─────────────────────────────────────────────

@@ -7,8 +7,8 @@ from sentence_transformers import CrossEncoder
 # ---------------------------
 # Configuration
 # ---------------------------
-DEFAULT_RETRIEVAL_COUNT = 50   # nombre de chunks avant reranking (augmenté pour améliorer le rappel)
-FINAL_COUNT = 5     # nombre final après reranking (augmenté pour améliorer la précision et le rappel)
+DEFAULT_RETRIEVAL_COUNT = 30   # nombre de chunks avant reranking (augmenté pour améliorer le rappel)
+FINAL_COUNT = 3     # nombre final après reranking (augmenté pour améliorer la précision et le rappel)
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 BM25_K1 = 1.5
 BM25_B = 0.75
