@@ -1,4 +1,4 @@
-<![CDATA[<div align="center">
+<div align="center">
 
 # 🇸🇳 FinChat Senegal — Assistance Financière Intelligente
 
@@ -73,7 +73,7 @@ Le pipeline RAFT simule le comportement d'un modèle affiné sur des tâches de 
 | **Backend** | Python 3.10+, Flask 3.x, flask-cors |
 | **Frontend** | React 18, TypeScript 5, Vite 5 |
 | **UI** | TailwindCSS, Lucide Icons, Recharts (graphiques) |
-| **Évaluation** | Cosine Similarity, Fidélité, Précision, Recall\@5, Latence |
+| **Évaluation** | Cosine Similarity, Fidélité, Précision, Recall@5, Latence |
 
 ---
 
@@ -194,7 +194,7 @@ npm run dev
 | **Cosine Similarity** | Proximité sémantique entre la réponse générée et la réponse de référence |
 | **Fidélité** | Taux de détection d'hallucinations (réponses hors contexte) |
 | **Précision Retrieval** | Qualité et pertinence des documents récupérés |
-| **Recall\@5** | Couverture des documents pertinents dans le top 5 des résultats |
+| **Recall@5** | Couverture des documents pertinents dans le top 5 des résultats |
 | **Latence** | Temps de réponse de bout en bout (en secondes) |
 
 ### Dashboard d'évaluation
@@ -259,4 +259,3 @@ Projet réalisé dans le cadre du cursus NLP/IA.
 ## 📄 Licence
 
 Ce projet est à usage académique et de démonstration.
-]]>
